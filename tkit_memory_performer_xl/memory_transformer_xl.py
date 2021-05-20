@@ -8,7 +8,9 @@ import math
 from collections import namedtuple
 from functools import partial
 from inspect import isfunction
-
+from performer_pytorch import SelfAttention
+from performer_pytorch import FastAttention
+from performer_pytorch import Performer
 # structs
 
 Memory = namedtuple('Memory', ['short', 'long'])
@@ -268,6 +270,13 @@ class LinearSelfAttention(nn.Module):
         self.to_kv = init_parameter((dim, 2 * dim), dim)
         self.to_out = init_parameter((dim, dim), dim)
 
+        # 使用performer_pytorch
+        self.attn_fn = FastAttention(
+            dim_heads = self.dim_head,
+            nb_features = 256,
+            causal = False
+
+        )
     def forward(self, x, hiddens = None):
         dim_head = self.dim_head
         w_q, w_kv, w_out = map(torch.clone, (self.to_q, self.to_kv, self.to_out))
@@ -280,7 +289,13 @@ class LinearSelfAttention(nn.Module):
 
         q, k, v = map(lambda t: reshape_dim(t, -1, (-1, dim_head)).transpose(-2, -3), (q, k, v))
 
-        out = linear_attn(q, k, v)
+        # out = linear_attn(q, k, v)
+        # print(out.size)
+        # # 这里修改 performer 快速
+        out=self.attn_fn(q, k, v)
+        
+        # print(out.size())
+
 
         out = out.transpose(2, 3).reshape_as(x)
         out = torch.einsum('bnd,de->bne', out, w_out)
@@ -303,7 +318,14 @@ class MemoryAttentionNetwork(nn.Module):
 
         self.mem_kv = init_parameter((1, num_mem_kv, dim), dim)
 
+        # self.attn = LinearSelfAttention(dim, num_memory_depth, heads = heads)
         self.attn = LinearSelfAttention(dim, num_memory_depth, heads = heads)
+        # self.attn = Performer(
+        # dim = dim,
+        # depth = num_memory_depth,
+        # heads = heads,
+        # causal = False,
+        # )
         self.gate = nBRC(dim, dim)
         self.mem_write_iters = mem_write_iters
 
@@ -370,8 +392,20 @@ class MemoryTransformerXL(nn.Module):
         )
 
         wrapper = partial(GRUGating, dim, mogrify = mogrify_gru) if gru_gated_residual else Residual
-
-        self.attn_layers = nn.ModuleList([wrapper(PreNorm(dim, SelfAttention(dim, seq_len, mem_len, lmem_len, heads, dropout = attn_layer_dropout, attn_dropout = attn_dropout, one_kv_head = one_kv_head, num_mem_kv = num_mem_kv))) for _ in range(depth)])
+        
+        
+        
+        att=SelfAttention(dim, seq_len, mem_len, lmem_len, heads, dropout = attn_layer_dropout, attn_dropout = attn_dropout, one_kv_head = one_kv_head, num_mem_kv = num_mem_kv)
+        
+        
+        
+        self.attn_layers = nn.ModuleList([wrapper(PreNorm(dim,att )) for _ in range(depth)])
+        
+        # print(att)
+        
+        
+        
+        
         self.ff_layers = nn.ModuleList([wrapper(PreNorm(dim, FeedForward(dim, dropout = ff_dropout, glu = ff_glu))) for _ in range(depth)])
 
         self.memory_network = MemoryAttentionNetwork(dim, len(self.memory_layers), mem_len, lmem_len, num_mem_kv = num_mem_kv, mem_write_iters = mem_write_iters)
