@@ -8,7 +8,7 @@ import math
 from collections import namedtuple
 from functools import partial
 from inspect import isfunction
-from performer_pytorch import SelfAttention
+from performer_pytorch import SelfAttention as PSelfAttention
 from performer_pytorch import FastAttention
 from performer_pytorch import Performer
 # structs
@@ -181,6 +181,19 @@ class SelfAttention(nn.Module):
         self.lmem_len = lmem_len
         self.scale = self.dim_head ** (-0.5)
 
+        # # 使用performer_pytorch
+        self.attn_fn = FastAttention(
+            dim_heads = self.dim_head,
+            nb_features = 256,
+            causal = False
+
+        )
+        # self.attn = PSelfAttention(
+        #     dim = self.dim_head,
+        #     heads = 8,
+        #     causal = False,
+        # )
+        # PSelfAttention
         self.to_q = nn.Linear(dim, dim, bias = False)
 
         kv_dim = self.dim_head if one_kv_head else dim
@@ -218,35 +231,47 @@ class SelfAttention(nn.Module):
 
         k, v = map(lambda x: x.expand(-1, h, -1, -1), (k, v))
 
-        dots = torch.einsum('bhid,bhjd->bhij', q, k) * self.scale
-        mask_value = max_neg_value(dots)
+        # dots = torch.einsum('bhid,bhjd->bhij', q, k) * self.scale
+        # mask_value = max_neg_value(dots)
 
-        if pos_emb is not None:
-            pos_emb = pos_emb[:, -kv_len:].type(q.dtype)
-            pos_dots = torch.einsum('bhid,hjd->bhij', q, pos_emb) * self.scale
-            pos_dots = shift(pos_dots)
-            pos_dots = F.pad(pos_dots, (dots.shape[-1] - pos_dots.shape[-1], 0), value = 0.)
-            dots = dots + pos_dots
+        # if pos_emb is not None:
+        #     pos_emb = pos_emb[:, -kv_len:].type(q.dtype)
+        #     pos_dots = torch.einsum('bhid,hjd->bhij', q, pos_emb) * self.scale
+        #     pos_dots = shift(pos_dots)
+        #     pos_dots = F.pad(pos_dots, (dots.shape[-1] - pos_dots.shape[-1], 0), value = 0.)
+        #     dots = dots + pos_dots
 
-        if input_mask is not None:
-            mask = input_mask[:, None, :, None] * input_mask[:, None, None, :]
-            mask = F.pad(mask, (mem_len + lmem_len + mem_kv_len, 0), value = True)
-            dots.masked_fill_(~mask, mask_value)
+        # if input_mask is not None:
+        #     mask = input_mask[:, None, :, None] * input_mask[:, None, None, :]
+        #     mask = F.pad(mask, (mem_len + lmem_len + mem_kv_len, 0), value = True)
+        #     dots.masked_fill_(~mask, mask_value)
 
-        total_mem_len = mem_len + lmem_len + mem_kv_len
-        mask = torch.ones(t, t + total_mem_len, **to(x)).triu_(diagonal = 1 + total_mem_len).bool()
-        dots.masked_fill_(mask[None, None, ...], mask_value)
+        # dots = torch.einsum('bhid,bhjd->bhij', q, k) * self.scale
+        # mask_value = max_neg_value(dots)
 
-        attn = dots.softmax(dim=-1)
-        attn = self.attn_dropout(attn)
+        # if pos_emb is not None:
+        #     pos_emb = pos_emb[:, -
+        # total_mem_len = mem_len + lmem_len + mem_kv_len
+        # mask = torch.ones(t, t + total_mem_len, **to(x)).triu_(diagonal = 1 + total_mem_len).bool()
+        # dots.masked_fill_(mask[None, None, ...], mask_value)
 
-        out = torch.einsum('bhij,bhjd->bhid', attn, v)
-        out = out.transpose(1, 2).reshape(b, t, -1)
-        out = self.to_out(out)
 
+        # # print("dots",dots.size())
+        # attn = dots.softmax(dim=-1)
+        # attn = self.attn_dropout(attn)
+
+        # # out = torch.einsum('bhij,bhjd->bhid', attn, v)
+        # # attn_fn
+
+        # # out=self.attn(dots)
+        # out = torch.einsum('bhij,bhjd->bhid', attn, v)
+        # out = out.transpose(1, 2).reshape(b, t, -1)
+        # out = self.to_out(out)
+        out=self.attn_fn(q, k, v)
         return self.dropout(out)
 
 # memory attention network
+
 
 def linear_attn(q, k, v):
     q, k = q.softmax(dim=-1), k.softmax(dim=-2)
@@ -396,7 +421,11 @@ class MemoryTransformerXL(nn.Module):
         
         
         att=SelfAttention(dim, seq_len, mem_len, lmem_len, heads, dropout = attn_layer_dropout, attn_dropout = attn_dropout, one_kv_head = one_kv_head, num_mem_kv = num_mem_kv)
-        
+        # att = PSelfAttention(
+        # dim = dim,
+        # heads = heads,
+        # causal = False,
+        # )
         
         
         self.attn_layers = nn.ModuleList([wrapper(PreNorm(dim,att )) for _ in range(depth)])
@@ -442,6 +471,10 @@ class MemoryTransformerXL(nn.Module):
             if use_memory:
                 hiddens.append(x)
 
+            
+
+            #注意力层
+            print("x",x.size())
             x = attn(x, memories = memories, input_mask = mask, pos_emb = pos_emb)
             x = ff(x)
 
