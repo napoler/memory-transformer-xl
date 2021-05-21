@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'tkit-memory-performer-xl',
   packages = find_packages(exclude=['examples']),
-  version = '0.0.1.0',
+  version = '0.0.1.1',
   license='Apache License 2.0 ',
   description = 'Memory performer-XL, a variant of performer-XL that uses linear attention update long term memory',
   author = 'Terry Chan',
