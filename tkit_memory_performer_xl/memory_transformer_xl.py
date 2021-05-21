@@ -170,7 +170,7 @@ class FeedForward(nn.Module):
 # attention.
 
 class SelfAttention(nn.Module):
-    def __init__(self, dim, seq_len, mem_len, lmem_len, heads = 8, attn_dropout = 0., dropout = 0., memory_attn_dropout = 0., one_kv_head = False, num_mem_kv = 4):
+    def __init__(self, dim, seq_len, mem_len, lmem_len, heads = 8, attn_dropout = 0.,causal=True, dropout = 0., memory_attn_dropout = 0., one_kv_head = False, num_mem_kv = 4):
         super().__init__()
         assert (dim % heads) == 0, 'dimension must be divisible by the number of heads'
 
@@ -185,7 +185,7 @@ class SelfAttention(nn.Module):
         self.attn_fn = FastAttention(
             dim_heads = self.dim_head,
             nb_features = 256,
-            causal = False
+            causal = causal
 
         )
         # self.attn = PSelfAttention(
@@ -389,7 +389,7 @@ class MemoryAttentionNetwork(nn.Module):
 # transformer
 
 class MemoryTransformerXL(nn.Module):
-    def __init__(self, num_tokens, dim, seq_len, depth, emb_dim = None, memory_layers = None, mem_len = None, lmem_len = None, heads = 8, gru_gated_residual = True, mogrify_gru = False, attn_dropout = 0., ff_glu = False, ff_dropout = 0., attn_layer_dropout = 0., one_kv_head = False, num_mem_kv = 0, mem_write_iters = 2):
+    def __init__(self, num_tokens, dim, seq_len, depth, emb_dim = None,causal=True, memory_layers = None, mem_len = None, lmem_len = None, heads = 8, gru_gated_residual = True, mogrify_gru = False, attn_dropout = 0., ff_glu = False, ff_dropout = 0., attn_layer_dropout = 0., one_kv_head = False, num_mem_kv = 0, mem_write_iters = 2):
         super().__init__()
         emb_dim = default(emb_dim, dim)
         mem_len = default(mem_len, seq_len)
@@ -420,7 +420,7 @@ class MemoryTransformerXL(nn.Module):
         
         
         
-        att=SelfAttention(dim, seq_len, mem_len, lmem_len, heads, dropout = attn_layer_dropout, attn_dropout = attn_dropout, one_kv_head = one_kv_head, num_mem_kv = num_mem_kv)
+        att=SelfAttention(dim, seq_len, mem_len, lmem_len,causal, heads, dropout = attn_layer_dropout, attn_dropout = attn_dropout, one_kv_head = one_kv_head, num_mem_kv = num_mem_kv)
         # att = PSelfAttention(
         # dim = dim,
         # heads = heads,
